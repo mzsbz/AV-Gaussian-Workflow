@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+from pathlib import Path
+import os
+import shutil
+import subprocess
+import sys
+
+
+# ===== User-configurable parameters =====
+# Change these to adjust the SfM run without editing the commands below.
+DATASET_NAME: str = "YJP-Lvl04_250828_DSLR"
+DATA_VARIANT: str = "oddset_quarterres"
+IMAGE_DIR_DEFAULT: Path = Path("/home/pc-04/Research/_datasets") / DATASET_NAME / "_source" / "colmap_images" / DATA_VARIANT
+RUN_DIR_DEFAULT: Path = Path("/home/pc-04/Research/_datasets") / DATASET_NAME / "colmap_runs" / DATA_VARIANT
+# =======================================
+
+
+def ensure_colmap_available() -> None:
+    if shutil.which("colmap") is None:
+        print("[ERROR] COLMAP not found in PATH. Please install or load it first.", file=sys.stderr)
+        sys.exit(1)
+
+
+def detect_gpu() -> tuple[int, str]:
+    gpu_index: str = os.environ.get("GPU_INDEX", "0")
+    try:
+        result = subprocess.run(["nvidia-smi", "-L"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        use_gpu: int = 1 if result.returncode == 0 else 0
+        if use_gpu == 0:
+            print("[WARN] nvidia-smi not available or no GPU detected; falling back to CPU")
+    except FileNotFoundError:
+        print("[WARN] nvidia-smi not available or no GPU detected; falling back to CPU")
+        use_gpu = 0
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>")
+    print(f"[INFO] USE_GPU={use_gpu} GPU_INDEX={gpu_index} CUDA_VISIBLE_DEVICES={visible}")
+    return use_gpu, gpu_index
+
+
+def rsync_copy(src_dir: Path, dst_dir: Path) -> None:
+    print("[INFO] Syncing images to run directory...")
+    if shutil.which("rsync") is not None:
+        subprocess.run(["rsync", "-a", f"{src_dir}/", f"{dst_dir}/"], check=True)
+    else:
+        # Fallback: shutil.copytree(copy) with dirs_exist_ok
+        for item in src_dir.rglob("*"):
+            rel = item.relative_to(src_dir)
+            target = dst_dir / rel
+            if item.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, target)
+
+
+def main() -> None:
+    # Resolve parameters from env or defaults
+    image_dir = Path(os.environ.get("IMAGE_DIR", str(IMAGE_DIR_DEFAULT))).expanduser()
+    run_dir = Path(os.environ.get("RUN_DIR", str(RUN_DIR_DEFAULT))).expanduser()
+
+    print(f"[INFO] IMAGE_DIR: {image_dir}")
+    print(f"[INFO] RUN_DIR:   {run_dir}")
+
+    ensure_colmap_available()
+    use_gpu, gpu_index = detect_gpu()
+
+    # Prepare workspace
+    (run_dir / "database").mkdir(parents=True, exist_ok=True)
+    (run_dir / "images").mkdir(parents=True, exist_ok=True)
+    (run_dir / "sparse").mkdir(parents=True, exist_ok=True)
+    (run_dir / "dense").mkdir(parents=True, exist_ok=True)
+
+    rsync_copy(image_dir, run_dir / "images")
+
+    db_path = run_dir / "database" / "database.db"
+    img_path = run_dir / "images"
+    sparse_dir = run_dir / "sparse"
+
+    # Feature extraction (PINHOLE)
+    print("[INFO] Running feature extraction (PINHOLE)...")
+    subprocess.run([
+        "colmap", "feature_extractor",
+        "--database_path", str(db_path),
+        "--image_path", str(img_path),
+        "--ImageReader.camera_model", "PINHOLE",
+        "--ImageReader.single_camera", "1",
+        "--SiftExtraction.use_gpu", str(use_gpu),
+        "--SiftExtraction.gpu_index", str(gpu_index),
+        "--SiftExtraction.estimate_affine_shape", "1",
+        "--SiftExtraction.domain_size_pooling", "1",
+    ], check=True)
+
+    # Exhaustive matching
+    print("[INFO] Running exhaustive matching...")
+    subprocess.run([
+        "colmap", "exhaustive_matcher",
+        "--database_path", str(db_path),
+        "--SiftMatching.use_gpu", str(use_gpu),
+        "--SiftMatching.gpu_index", str(gpu_index),
+    ], check=True)
+
+    # Mapper (sparse reconstruction)
+    print("[INFO] Running mapper (sparse reconstruction)...")
+    (sparse_dir / "0").mkdir(parents=True, exist_ok=True)
+    subprocess.run([
+        "colmap", "mapper",
+        "--database_path", str(db_path),
+        "--image_path", str(img_path),
+        "--output_path", str(sparse_dir),
+    ], check=True)
+
+    # Export model to text and PLY
+    print("[INFO] Exporting model to text and PLY...")
+    model_dir = sparse_dir / "0"
+    if model_dir.is_dir():
+        (sparse_dir / "text").mkdir(parents=True, exist_ok=True)
+        subprocess.run([
+            "colmap", "model_converter",
+            "--input_path", str(model_dir),
+            "--output_path", str(sparse_dir / "text"),
+            "--output_type", "TXT",
+        ], check=True)
+
+        subprocess.run([
+            "colmap", "model_converter",
+            "--input_path", str(model_dir),
+            "--output_path", str(sparse_dir / "points3D.ply"),
+            "--output_type", "PLY",
+        ], check=True)
+    else:
+        print(f"[WARN] No model directory at {model_dir}. Mapper may have failed or produced a different index.")
+
+    print(f"[INFO] Done. Run directory: {run_dir}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as exc:
+        print(f"[ERROR] Subprocess failed with return code {exc.returncode}", file=sys.stderr)
+        sys.exit(exc.returncode)
+    except KeyboardInterrupt:
+        print("[INFO] Interrupted by user", file=sys.stderr)
+        sys.exit(130)
+
+

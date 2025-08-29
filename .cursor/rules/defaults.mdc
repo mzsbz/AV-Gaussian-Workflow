@@ -1,0 +1,8 @@
+---
+description: default rules
+globs:
+alwaysApply: true
+---
+
+- We are using uv as python package manager
+- Always use path from Pathlib where possible
