@@ -1,57 +1,34 @@
-## AV-Gaussian-Workflow Utilities
+# Setup
 
-### split_video_tracks.sh
-Extract frames at 1 fps for each video stream (track) in a container. No split video files are produced.
+{dataset_name} = {dataset_location}_{dataset_type}_{dataset_date}-{dataset_no}
 
-#### Requirements
-- ffmpeg (includes `ffmpeg` and `ffprobe`)
+- put data in ../_dataset/{dataset_name}/_source/original
 
-#### Script
-- Location: `split_video_tracks.sh`
-- Default input: `/home/pc-04/Research/_datasets/YJP-Lvl04_250826/_source/VID_20250826_162604_00_014.mp4`
-
-#### Usage
-Run with default input:
-```bash
-/home/pc-04/Research/gaussian-splats/AV-Gaussian-Workflow/split_video_tracks.sh
-```
-
-Run with a custom input file:
-```bash
-/home/pc-04/Research/gaussian-splats/AV-Gaussian-Workflow/split_video_tracks.sh /path/to/input.mp4
-```
-
-#### Behavior
-- Detects all video streams using `ffprobe`
-- For each video stream index `N`:
-  - Extracts 1 fps JPEG frames to: `.../trackN_frames/frame_%06d_trackN.jpg`
-    - Example: `track0_frames/frame_000001_track0.jpg`
-
-#### Examples of outputs
-- Frames: `track0_frames/frame_000001_track0.jpg`, `track1_frames/frame_000001_track1.jpg`
-
-#### Notes
-- If the container has no video streams, the script exits with an error.
-- Overwrites existing outputs of the same name.
-
-### extract_frames.py
-Python version that mirrors the shell script behavior using `ffprobe`/`ffmpeg`.
-
-#### Requirements
-- Python 3.8+
-- ffmpeg (includes `ffmpeg` and `ffprobe`)
-
-#### Usage
-Run with default input:
-```bash
-python3 /home/pc-04/Research/gaussian-splats/AV-Gaussian-Workflow/extract_frames.py
-```
-
-Run with a custom input file:
-```bash
-python3 /home/pc-04/Research/gaussian-splats/AV-Gaussian-Workflow/extract_frames.py /path/to/input.mp4
-```
-
-#### Behavior
-- Same outputs as the shell script: `trackN_frames/frame_%06d_trackN.jpg`
-
+- If 360 video
+    - run `extract_360video.py`
+        - output front: ../_dataset/{dataset_name}/_source/extracted/front
+        - output back : ../_dataset/{dataset_name}/_source/extracted/back
+        - symlink front: ../_dataset/{dataset_name}/_source/colmap_images/front
+        - symlink back : ../_dataset/{dataset_name}/_source/colmap_images/back
+    - run `colmap_sfm_fisheye.py`
+        - output: ../_dataset/{dataset_name}/colmap_runs/{data_variant}
+    - run `run_3dgrut_train.py`
+        - output: ../_dataset/{dataset_name}/3dgrut_runs/{data_variant}/{data_variant}-{DDMM_HHMMSS}
+- If 360 photos
+    - run `extract_360photo.py`
+        - output front: ../_dataset/{dataset_name}/_source/extracted/front
+        - output back : ../_dataset/{dataset_name}/_source/extracted/back
+    - run `downsample_images.py`
+        - output front: ../_dataset/{dataset_name}/_source/colmap_images/front_{downsample_factor}
+        - output back : ../_dataset/{dataset_name}/_source/colmap_images/back_{downsample_factor}
+    - run `colmap_sfm_fisheye.py`
+        - output: ../_dataset/{dataset_name}/colmap_runs/{data_variant}
+    - run `run_3dgrut_train.py`
+        - output: ../_dataset/{dataset_name}/3dgrut_runs/{data_variant}/{data_variant}-{DDMM_HHMMSS}
+- If photos
+    - run `downsample_images.py`
+        - output: ../_dataset/{dataset_name}/_source/colmap_images/images_{downsample_factor}
+    - run `colmap_sfm_pinhole.py`
+        - output: ../_dataset/{dataset_name}/colmap_runs/{data_variant}
+    - run `run_3dgrut_train.py`
+        - output: ../_dataset/{dataset_name}/3dgrut_runs/{data_variant}/{data_variant}-{DDMM_HHMMSS}
