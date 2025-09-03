@@ -13,10 +13,10 @@ import sys
 from config import DATASET_NAME, DATASET_PATH  # noqa: E402
 
 # Source images directory for this dataset
-IMAGE_DIR_DEFAULT: Path = (DATASET_PATH / "_source" / "colmap_images" / "front")
+IMAGE_DIR_DEFAULT: Path = (DATASET_PATH / "_source" / "colmap_images" / "both")
 
 # Output run directory for COLMAP artifacts
-RUN_DIR_DEFAULT: Path = (DATASET_PATH / "colmap_runs" / "front")
+RUN_DIR_DEFAULT: Path = (DATASET_PATH / "colmap_runs" / "both")
 # =======================================
 
 
