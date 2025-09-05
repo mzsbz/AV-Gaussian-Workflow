@@ -7,18 +7,12 @@ import shutil
 import subprocess
 import sys
 
+import config
 
 # ===== User-configurable parameters =====
-# Defaults are derived from config.py; override via env vars if needed.
-from config import DATASET_NAME, DATASET_PATH  # noqa: E402
-
-# Source images directory for this dataset
-EVERY_SECONDS: int = 1
-CAMERA: str = "front" 
-IMAGE_DIR_DEFAULT: Path = (DATASET_PATH / "_source" / "colmap_images" / f"every_{EVERY_SECONDS}" / CAMERA )
-
-# Output run directory for COLMAP artifacts
-RUN_DIR_DEFAULT: Path = (DATASET_PATH / "colmap_runs" / f"every_{EVERY_SECONDS}" / CAMERA)
+# Change these to adjust the SfM run without editing the commands below.
+IMAGE_DIR_DEFAULT: Path = config.DATASET_PATH / "_source" / "colmap_images" / config.DATA_VARIANT
+RUN_DIR_DEFAULT: Path = config.DATASET_PATH / "colmap_runs" / config.DATA_VARIANT
 # =======================================
 
 
@@ -77,6 +71,49 @@ def create_or_update_symlink(src_dir: Path, dst_link: Path) -> None:
     dst_link.symlink_to(src_dir, target_is_directory=True)
 
 
+def find_largest_model(sparse_dir: Path) -> Path | None:
+    """Find the model with the largest folder size by comparing directory sizes.
+    
+    Returns the path to the largest model directory, or None if no models found.
+    """
+    if not sparse_dir.exists():
+        return None
+    
+    model_dirs = [d for d in sparse_dir.iterdir() if d.is_dir() and d.name.isdigit()]
+    if not model_dirs:
+        return None
+    
+    if len(model_dirs) == 1:
+        return model_dirs[0]
+    
+    print(f"[INFO] Found {len(model_dirs)} models, comparing folder sizes...")
+    
+    largest_model = None
+    max_size = 0
+    
+    for model_dir in model_dirs:
+        try:
+            # Calculate total size of directory
+            total_size = sum(f.stat().st_size for f in model_dir.rglob('*') if f.is_file())
+            size_mb = total_size / (1024 * 1024)
+            print(f"[INFO] Model {model_dir.name}: {size_mb:.1f} MB")
+            
+            if total_size > max_size:
+                max_size = total_size
+                largest_model = model_dir
+        except OSError as e:
+            print(f"[WARN] Failed to analyze model {model_dir.name}: {e}")
+            continue
+    
+    if largest_model:
+        size_mb = max_size / (1024 * 1024)
+        print(f"[INFO] Selected largest model: {largest_model.name} ({size_mb:.1f} MB)")
+    else:
+        print("[WARN] Could not determine largest model")
+    
+    return largest_model
+
+
 def main() -> None:
     # Resolve parameters from env or defaults
     image_dir = Path(os.environ.get("IMAGE_DIR", str(IMAGE_DIR_DEFAULT))).expanduser()
@@ -131,28 +168,31 @@ def main() -> None:
         "--database_path", str(db_path),
         "--image_path", str(img_path),
         "--output_path", str(sparse_dir),
+        "--Mapper.min_model_size", "10",  # Minimum 10 registered images
     ], check=True)
 
-    # Export model to text and PLY
-    print("[INFO] Exporting model to text and PLY...")
-    model_dir = sparse_dir / "0"
-    if model_dir.is_dir():
-        (sparse_dir / "text").mkdir(parents=True, exist_ok=True)
-        subprocess.run([
-            "colmap", "model_converter",
-            "--input_path", str(model_dir),
-            "--output_path", str(sparse_dir / "text"),
-            "--output_type", "TXT",
-        ], check=True)
-
-        subprocess.run([
-            "colmap", "model_converter",
-            "--input_path", str(model_dir),
-            "--output_path", str(sparse_dir / "points3D.ply"),
-            "--output_type", "PLY",
-        ], check=True)
+    # Find the largest model and clean up others
+    print("[INFO] Analyzing models to find largest...")
+    largest_model = find_largest_model(sparse_dir)
+    
+    if largest_model:
+        # If the largest model is not in sparse/0, move it there
+        if largest_model.name != "0":
+            print(f"[INFO] Moving largest model from {largest_model.name} to 0...")
+            target_dir = sparse_dir / "0"
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
+            shutil.move(str(largest_model), str(target_dir))
+        
+        # Remove all other model directories
+        for model_dir in sparse_dir.iterdir():
+            if model_dir.is_dir() and model_dir.name.isdigit() and model_dir.name != "0":
+                print(f"[INFO] Removing smaller model {model_dir.name}...")
+                shutil.rmtree(model_dir)
+        
+        print("[INFO] Kept only the largest model in sparse/0")
     else:
-        print(f"[WARN] No model directory at {model_dir}. Mapper may have failed or produced a different index.")
+        print("[WARN] No valid model found")
 
     print(f"[INFO] Done. Run directory: {run_dir}")
 
