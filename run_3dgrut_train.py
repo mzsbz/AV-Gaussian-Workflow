@@ -2,14 +2,16 @@
 from pathlib import Path
 import subprocess
 import sys
+from config import DATASET_ROOT, DATASET_NAME
 
 # ===== User-configurable parameters =====
 # Change these to adjust the training run without editing the command below.
-DATASET_NAME = "YJP-Lvl04_250828_DSLR"
-DATA_VARIANT = "oddset_quarterres"
-DATA_PATH: str = f"/home/pc-04/Research/_datasets/{DATASET_NAME}/colmap_runs/{DATA_VARIANT}"
-OUT_DIR: str = f"/home/pc-04/Research/_datasets/{DATASET_NAME}/3dgrut_runs/"
-EXPERIMENT_NAME: str = f"{DATA_VARIANT}"
+DATA_FREQ: int = 3
+DATA_VARIANT: str = f"every_{DATA_FREQ}"
+DATA_CAMERA: str = "front"
+DATA_PATH: str = str(DATASET_ROOT / DATASET_NAME / "colmap_runs" / DATA_VARIANT / DATA_CAMERA)
+OUT_DIR: str = str(DATASET_ROOT / DATASET_NAME / "3dgrut_runs")
+EXPERIMENT_NAME: str = f"{DATA_VARIANT}_{DATA_CAMERA}"
 DOWNSAMPLE_FACTOR: int = 1
 ITERATIONS: int = 30000
 # =======================================
@@ -27,7 +29,7 @@ def main() -> None:
         'source "$(conda info --base)/etc/profile.d/conda.sh" && '
         'conda activate 3dgrut && '
         'python train.py '
-        '--config-name apps/colmap_3dgut_mcmc.yaml '
+        '--config-name apps/colmap_3dgut.yaml '
         f'path={DATA_PATH} '
         f'out_dir={OUT_DIR} '
         f'experiment_name={EXPERIMENT_NAME} '

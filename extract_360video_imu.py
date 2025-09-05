@@ -37,8 +37,8 @@ def _resolve_default_input() -> Path:
     sys.exit(1)
 
 VIDEO_DIR: Path = DATASET_PATH / "_source" / "original"
-EXTRACTED_DIR: Path = DATASET_PATH / "_source" / "extracted_imu"
-SYMLINK_DIR: Path = DATASET_PATH / "_source" / "colmap_images_imu"
+EXTRACTED_DIR: Path = DATASET_PATH / "_source" / "extracted"
+SYMLINK_DIR: Path = DATASET_PATH / "_source" / "colmap_images"
 
 DEFAULT_INPUT = _resolve_default_input()
 
@@ -97,21 +97,22 @@ def probe_duration_seconds(input_path: Path) -> float:
     except ValueError:
         return 0.0
 
-def create_both_folder_with_symlinks(extracted_dir: Path) -> None:
+def create_both_folder_with_symlinks(extracted_dir: Path, every_seconds: int) -> None:
     """Create a 'both' folder containing symlinks to all images from 'front' and 'back' folders."""
-    both_dir = extracted_dir / "both"
-    both_dir.mkdir(exist_ok=True)
+    every_dir = extracted_dir / f"every_{every_seconds}"
+    both_dir = every_dir / "both"
+    both_dir.mkdir(parents=True, exist_ok=True)
     
     # Create symlinks from front and back folders
     for track in ["front", "back"]:
-        track_dir = extracted_dir / track
+        track_dir = every_dir / track
         if track_dir.exists():
             for image_file in track_dir.glob("*.jpg"):
                 symlink_name = both_dir / image_file.name
                 if not symlink_name.exists():
                     symlink_name.symlink_to(image_file)
 
-def extract_frames_for_track_time_based(input_path: Path, track_index: int, output_dir: Path, every_seconds: float) -> None:
+def extract_frames_for_track_time_based(input_path: Path, track_index: int, output_dir: Path, every_seconds: int) -> None:
     """Time-based frame extraction."""
     output_dir.mkdir(parents=True, exist_ok=True)
     label = label_for_track(track_index)
@@ -170,6 +171,15 @@ def find_insv_file_for_mp4(mp4_path: Path) -> Optional[Path]:
 
 def extract_imu_data_for_analysis(input_path: Path) -> bool:
     """Extract IMU data for analysis purposes (not for frame extraction)."""
+    # Check if IMU data already exists
+    imu_dir = DATASET_PATH / "_source" / "imu_data"
+    imu_readings_file = imu_dir / "imu_readings.csv"
+    heading_data_file = imu_dir / "heading_data.csv"
+    
+    if imu_readings_file.exists() and heading_data_file.exists():
+        print(f"IMU data already exists at {imu_dir}. Skipping IMU extraction.")
+        return True
+    
     # Try to find corresponding .insv file for IMU data
     insv_path = find_insv_file_for_mp4(input_path)
     
@@ -188,13 +198,12 @@ def extract_imu_data_for_analysis(input_path: Path) -> bool:
     print(f"Found {len(extractor.imu_data)} IMU readings")
     
     # Save IMU data for analysis
-    imu_dir = DATASET_PATH / "_source" / "imu_data"
     imu_dir.mkdir(parents=True, exist_ok=True)
     
-    extractor.save_imu_data_csv(imu_dir / "imu_readings.csv")
+    extractor.save_imu_data_csv(imu_readings_file)
     
     # Save heading data for direction analysis
-    extractor.save_heading_data_csv(imu_dir / "heading_data.csv")
+    extractor.save_heading_data_csv(heading_data_file)
     
     # Get and display direction summary
     direction_summary = extractor.get_direction_summary()
@@ -216,8 +225,8 @@ def main() -> int:
     parser.add_argument("input", nargs="?", type=Path, default=DEFAULT_INPUT, help="Path to input video")
     
     # Extraction parameters
-    parser.add_argument("--every-seconds", dest="every_seconds", type=float, default=5.0,
-                       help="Extract one frame every N seconds (default: 5.0)")
+    parser.add_argument("--every-seconds", dest="every_seconds", type=int, default=5,
+                       help="Extract one frame every N seconds (default: 5)")
     parser.add_argument("--extract-imu", action="store_true", default=True,
                        help="Extract IMU data for analysis (default: True)")
     
@@ -252,16 +261,13 @@ def main() -> int:
     # Extract frames for each track
     for idx in track_indices:
         label = label_for_track(idx)
-        frames_dir = EXTRACTED_DIR / label
+        every_dir = EXTRACTED_DIR / f"every_{args.every_seconds}"
+        frames_dir = every_dir / label
         print(f"  -> Extracting 1 frame every {args.every_seconds}s to {frames_dir}")
         extract_frames_for_track_time_based(input_path, idx, frames_dir, args.every_seconds)
 
     # Create the 'both' folder with symlinks
-    create_both_folder_with_symlinks(EXTRACTED_DIR)
-    
-    # Create symlink from SYMLINK_DIR to the 'both' folder
-    both_symlink_path = SYMLINK_DIR / "both"
-    create_or_update_symlink(both_symlink_path, EXTRACTED_DIR / "both")
+    create_both_folder_with_symlinks(EXTRACTED_DIR, args.every_seconds)
 
     print(f"Done. Output files are in: {EXTRACTED_DIR}")
     return 0

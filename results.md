@@ -5,7 +5,6 @@ YJP-Lvl04_250828 [Insta360 x4]
     - Colmap Full Res Front [2048 x 2048] [Sequential]: 14.659 mins
     - Colmap Full Res Front [2048 x 2048] [Exhaustive] (every 5s) : 2.026 mins
     - Colmap Full Res Front [2048 x 2048] [Exhaustive] (every 3s) : 5.872 mins
-    - Colmap Full Res Front [2048 x 2048] [Exhaustive] (every 3s) : 5.872 mins
     - 3DGRUT Half Res: 30000 n_step, 60 n_epochs, 586.19s, 51.18 it/s
         - Mean PSNR : 6.847
         - Mean SSIM : 0.378
