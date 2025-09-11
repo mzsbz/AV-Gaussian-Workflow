@@ -9,7 +9,7 @@ DATA_PATH: str = str(DATASET_PATH / "colmap_runs" / DATA_VARIANT)
 OUT_DIR: str = str(DATASET_PATH / "3dgrut_runs")
 EXPERIMENT_NAME: str = f"{DATA_VARIANT}"
 DOWNSAMPLE_FACTOR: int = 1
-ITERATIONS: int = 30000
+ITERATIONS: int = 100000
 # =======================================
 
 
@@ -32,6 +32,7 @@ def main() -> None:
         f'dataset.downsample_factor={DOWNSAMPLE_FACTOR} '
         'export_ply.enabled=true '
         'test_last=false '
+        f'model.default_density=1.0 '
         f'n_iterations={ITERATIONS}'        
     )
 
