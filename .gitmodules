@@ -1,0 +1,3 @@
+[submodule "libs/gsplat"]
+	path = libs/gsplat
+	url = https://github.com/mzsbz/gsplat.git
